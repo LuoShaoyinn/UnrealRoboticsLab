@@ -28,6 +28,7 @@
 #include "Transport/ShmPublishTransport.h" // ResolveSessionDir
 #include "Misc/Paths.h"
 #include "HAL/FileManager.h"
+#include "HAL/IConsoleManager.h"
 #include "Engine/PostProcessVolume.h"
 #include "EngineUtils.h"
 #include "MuJoCo/Utils/MjUtils.h"
@@ -41,6 +42,19 @@
 #include "MuJoCo/Core/MjArticulation.h"
 #include "MuJoCo/Utils/MjOrientationUtils.h"
 #include "zmq.h"
+
+// ---------------------------------------------------------------------------
+// Console variables
+// ---------------------------------------------------------------------------
+
+static TAutoConsoleVariable<int32> CVarMjCameraPathTracing(
+	TEXT("MjCamera.PathTracing"),
+	0,
+	TEXT("Enable UE Path Tracer on MjCamera Real-mode scene captures.\n")
+	TEXT("0: hardware ray tracing / deferred (default)\n")
+	TEXT("1: path tracer (reference quality, progressive — noisy on dynamic scenes)"),
+	ECVF_Default
+);
 
 // ---------------------------------------------------------------------------
 // FCameraZmqWorker
@@ -447,7 +461,18 @@ void UMjCamera::SetupRenderTarget()
 		case EMjCameraMode::Real:
 		default:
 			CaptureComponent->CaptureSource = ESceneCaptureSource::SCS_FinalToneCurveHDR;
-			CaptureComponent->PrimitiveRenderMode = ESceneCapturePrimitiveRenderMode::PRM_LegacySceneCapture;
+			// Use the main-scene render path (not legacy capture) so that hardware
+			// ray-tracing effects and the Path Tracer are forwarded through the
+			// SceneCaptureComponent2D when r.RayTracing/r.PathTracing are enabled.
+			CaptureComponent->PrimitiveRenderMode = ESceneCapturePrimitiveRenderMode::PRM_RenderScenePrimitives;
+			// Enable the Path Tracer on this capture when the console variable is set.
+			// EngineShowFlags.PathTracing defaults to false and is only auto-set for the
+			// main viewport in VMI_PathTracing mode; scene captures must opt in explicitly.
+			if (CVarMjCameraPathTracing.GetValueOnGameThread() > 0)
+			{
+				CaptureComponent->ShowFlags.SetPathTracing(true);
+				UE_LOG(LogURLab, Log, TEXT("[MjCamera] '%s' Path Tracer enabled (MjCamera.PathTracing=1)"), *MjName);
+			}
 			break;
 	}
 
