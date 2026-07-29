@@ -75,6 +75,26 @@ def clean_mesh(mesh):
     return mesh
 
 
+def preserve_stl_face_normals(mesh):
+    """Represent each STL facet normal explicitly before vertex welding.
+
+    STL stores normals per triangle rather than per vertex.  Trimesh's normal
+    processing otherwise welds coincident vertices first and averages across
+    hard edges, which produces visible gradients on nominally flat surfaces.
+    Expanding to face corners lets ``clean_mesh`` merge only vertices whose
+    positions *and* facet normals agree.
+    """
+    corner_vertices = mesh.vertices[mesh.faces.reshape(-1)]
+    corner_normals = np.repeat(mesh.face_normals, 3, axis=0)
+    corner_faces = np.arange(len(corner_vertices)).reshape((-1, 3))
+    return trimesh.Trimesh(
+        vertices=corner_vertices,
+        faces=corner_faces,
+        vertex_normals=corner_normals,
+        process=False,
+    )
+
+
 _SCRIPT_MTIME = Path(__file__).stat().st_mtime
 
 
@@ -93,11 +113,16 @@ def convert_mesh(input_path: Path, output_path: Path) -> bool:
     print(f"\n  Converting: {input_path.name} -> {output_path.name}")
 
     try:
-        mesh = trimesh.load(str(input_path), force='mesh')
+        # Keep authored vertex splits/normals intact.  The default processing
+        # pass welds by position before ``clean_mesh`` can respect hard edges.
+        mesh = trimesh.load(str(input_path), force='mesh', process=False)
 
         if not isinstance(mesh, trimesh.Trimesh):
             print(f"  x Not a valid mesh: {input_path.name}")
             return False
+
+        if input_path.suffix.lower() == ".stl":
+            mesh = preserve_stl_face_normals(mesh)
 
         cleaned_mesh = clean_mesh(mesh)
 
