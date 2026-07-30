@@ -439,8 +439,18 @@ void UMjCamera::SetupRenderTarget()
 	const bool bDepthMode = (CaptureMode == EMjCameraMode::Depth);
 	if (bDepthMode)
 	{
-		RT->RenderTargetFormat = ETextureRenderTargetFormat::RTF_R32f;
-		RT->InitCustomFormat(resolution[0], resolution[1], PF_R32_FLOAT, /*bForceLinearGamma=*/true);
+		// Vulkan's RHIReadSurfaceData path cannot convert VK_FORMAT_R32_SFLOAT
+		// to FLinearColor (it asserts in VulkanRenderTarget.cpp). Keep full
+		// float precision, but use the cross-RHI RGBA32F format whose R channel
+		// carries SCS_SceneDepth. The CPU-facing result remains one float per
+		// pixel; the extra GPU channels avoid an RHI-specific crash and do not
+		// change the public depth API.
+		RT->RenderTargetFormat = ETextureRenderTargetFormat::RTF_RGBA32f;
+		RT->InitCustomFormat(
+			resolution[0],
+			resolution[1],
+			PF_A32B32G32R32F,
+			/*bForceLinearGamma=*/true);
 	}
 	else
 	{
@@ -757,10 +767,9 @@ void UMjCamera::RequestReadback()
 
 	if (CaptureMode == EMjCameraMode::Depth)
 	{
-		// PF_R32_FLOAT render target: ReadSurfaceFData lands a 4-channel
-		// FLinearColor per pixel; we keep just the R channel post-fence.
-		// Slightly wasteful at readback (4x temp memory) but uses the
-		// stock UE async API.
+		// RGBA32F render target: ReadSurfaceData lands a 4-channel
+		// FLinearColor per pixel; SCS_SceneDepth is in R, which is the only
+		// channel exposed by the public API.
 		ENQUEUE_RENDER_COMMAND(MjCameraReadbackDepth)(
 			[Resource, FloatPtr, Rect](FRHICommandListImmediate& RHICmdList) {
 				TArray<FLinearColor> Scratch;
