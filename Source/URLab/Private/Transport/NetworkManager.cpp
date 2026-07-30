@@ -32,7 +32,11 @@ UMjNetworkManager::UMjNetworkManager()
 
 void UMjNetworkManager::UpdateCameraStreamingState()
 {
-	UE_LOG(LogURLabNet, Log, TEXT("UpdateCameraStreamingState: Setting all cameras to streaming=%s (Global Toggle)"), bEnableAllCameras ? TEXT("TRUE") : TEXT("FALSE"));
+	const bool bBroadcast = bEnableAllCameras && bEnableCameraBroadcast;
+	UE_LOG(LogURLabNet, Log,
+		TEXT("UpdateCameraStreamingState: streaming=%s legacy_broadcast=%s"),
+		bEnableAllCameras ? TEXT("TRUE") : TEXT("FALSE"),
+		bBroadcast ? TEXT("TRUE") : TEXT("FALSE"));
 
 	FScopeLock Lock(&CameraMutex);
 	int32 Count = 0;
@@ -40,8 +44,8 @@ void UMjNetworkManager::UpdateCameraStreamingState()
 	{
 		if (Cam)
 		{
-			Cam->bEnableZmqBroadcast = bEnableAllCameras;
-			Cam->bEnableShmBroadcast = bEnableAllCameras;
+			Cam->bEnableZmqBroadcast = bBroadcast;
+			Cam->bEnableShmBroadcast = bBroadcast;
 			Cam->SetStreamingEnabled(bEnableAllCameras);
 			Count++;
 			UE_LOG(LogURLabNet, Log, TEXT(" - %s Camera: %s on Actor: %s"), bEnableAllCameras ? TEXT("Enabled") : TEXT("Disabled"), *Cam->GetName(), Cam->GetOwner() ? *Cam->GetOwner()->GetName() : TEXT("None"));
@@ -58,8 +62,9 @@ void UMjNetworkManager::RegisterCamera(UMjCamera* Cam)
 	ActiveCameras.AddUnique(Cam);
 
 	// Sync newly registered camera to the current global toggle state
-	Cam->bEnableZmqBroadcast = bEnableAllCameras;
-	Cam->bEnableShmBroadcast = bEnableAllCameras;
+	const bool bBroadcast = bEnableAllCameras && bEnableCameraBroadcast;
+	Cam->bEnableZmqBroadcast = bBroadcast;
+	Cam->bEnableShmBroadcast = bBroadcast;
 	Cam->SetStreamingEnabled(bEnableAllCameras);
 
 	UE_LOG(LogURLabNet, Log, TEXT("UMjNetworkManager: Registered Camera %s. Total: %d"), *Cam->GetName(), ActiveCameras.Num());

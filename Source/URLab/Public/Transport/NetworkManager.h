@@ -42,9 +42,17 @@ class URLAB_API UMjNetworkManager : public UActorComponent
 public:
 	UMjNetworkManager();
 
-	/** Forces all UMjCameras to enable ZMQ broadcasting. */
+	/** Enables rendering/readback for all registered UMjCameras. */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Network")
 	bool bEnableAllCameras = true;
+
+	/**
+	 * Enables URLab's legacy per-camera ZMQ and SHM publishers while camera
+	 * streaming is enabled. Applications with their own camera transport can
+	 * disable this without disabling rendering or on-demand readback.
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Network")
+	bool bEnableCameraBroadcast = true;
 
 	void UpdateCameraStreamingState();
 
