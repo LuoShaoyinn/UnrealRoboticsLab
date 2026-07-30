@@ -56,6 +56,24 @@ static TAutoConsoleVariable<int32> CVarMjCameraPathTracing(
 	ECVF_Default
 );
 
+static TAutoConsoleVariable<int32> CVarMjCameraCaptureEveryFrame(
+	TEXT("MjCamera.CaptureEveryFrame"),
+	1,
+	TEXT("Control continuous rendering for enabled MjCamera scene captures.\n")
+	TEXT("0: render only explicit captures\n")
+	TEXT("1: render every engine frame (default)"),
+	ECVF_Default
+);
+
+static TAutoConsoleVariable<int32> CVarMjCameraAutoReadback(
+	TEXT("MjCamera.AutoReadback"),
+	1,
+	TEXT("Control automatic GPU-to-CPU readback while an MjCamera is streaming.\n")
+	TEXT("0: disable automatic readback (profiling)\n")
+	TEXT("1: read back continuously (default)"),
+	ECVF_Default
+);
+
 // ---------------------------------------------------------------------------
 // FCameraZmqWorker
 // ---------------------------------------------------------------------------
@@ -264,7 +282,7 @@ UMjCamera::UMjCamera()
 		// We set PostProcessBlendWeight=1 so the component's own PostProcessSettings are used.
 		// At BeginPlay, we copy settings from the scene's PPV to match the viewport look.
 		CaptureComponent->PostProcessBlendWeight = 1.0f;
-		CaptureComponent->bUseRayTracingIfEnabled = false;
+		CaptureComponent->bUseRayTracingIfEnabled = true;
 
 		CaptureComponent->bHiddenInGame = true;
 	}
@@ -402,7 +420,9 @@ void UMjCamera::TickComponent(float DeltaTime, ELevelTick TickType,
 
 	// Always refresh PendingPixels while streaming; include_cameras consumes it
 	// without enabling ZMQ/SHM broadcast (those flags only gate the workers below).
-	if (bStreamingEnabled && !bReadbackPending)
+	if (bStreamingEnabled
+		&& CVarMjCameraAutoReadback.GetValueOnGameThread() > 0
+		&& !bReadbackPending)
 	{
 		RequestReadback();
 	}
@@ -620,7 +640,8 @@ void UMjCamera::SetStreamingEnabled(bool bEnable)
 			CaptureComponent->SetVisibility(true);
 			CaptureComponent->SetActive(true);
 			CaptureComponent->bHiddenInGame = false;
-			CaptureComponent->bCaptureEveryFrame = true;
+			CaptureComponent->bCaptureEveryFrame =
+				CVarMjCameraCaptureEveryFrame.GetValueOnGameThread() > 0;
 			CaptureComponent->bCaptureOnMovement = false; // We drive capture manually each tick
 		}
 		bStreamingEnabled = true;

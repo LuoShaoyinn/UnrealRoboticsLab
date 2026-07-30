@@ -33,6 +33,36 @@
 #include "RenderingThread.h"
 #include "ShaderCompiler.h"
 #include "URLabEditorLogging.h"
+#include "XmlFile.h"
+
+namespace
+{
+bool HasExternalGlbVisualFrame(const FXmlNode* Node)
+{
+	if (!Node)
+		return false;
+
+	if (Node->GetTag().Equals(TEXT("frame")) &&
+		Node->GetAttribute(TEXT("name")).StartsWith(
+			TEXT("visual__"), ESearchCase::CaseSensitive))
+	{
+		return true;
+	}
+
+	for (const FXmlNode* Child : Node->GetChildrenNodes())
+	{
+		if (HasExternalGlbVisualFrame(Child))
+			return true;
+	}
+	return false;
+}
+
+bool UsesExternalGlbVisualConvention(const FString& Filename)
+{
+	const FXmlFile XmlFile(Filename);
+	return XmlFile.IsValid() && HasExternalGlbVisualFrame(XmlFile.GetRootNode());
+}
+} // namespace
 
 UMujocoImportFactory::UMujocoImportFactory()
 {
@@ -82,66 +112,87 @@ UObject* UMujocoImportFactory::FactoryCreateFile(UClass* InClass, UObject* InPar
 
 	if (NewBP)
 	{
-		FScopedSlowTask SlowTask(4.f, NSLOCTEXT("URLab", "ImportingMuJoCo", "Importing MuJoCo model..."));
+		const bool bUsesExternalGlbVisuals =
+			UsesExternalGlbVisualConvention(Filename);
+		FScopedSlowTask SlowTask(
+			bUsesExternalGlbVisuals ? 3.f : 4.f,
+			NSLOCTEXT("URLab", "ImportingMuJoCo", "Importing MuJoCo model..."));
 		SlowTask.MakeDialog(/*bShowCancelButton=*/false);
 
-		// Step 0: Try to run clean_meshes_trimesh.py to prepare meshes
-		SlowTask.EnterProgressFrame(1.f, NSLOCTEXT("URLab", "ImportStep0", "Preparing meshes..."));
-
 		FString ActualXmlPath = Filename;
+		if (!bUsesExternalGlbVisuals)
 		{
-			FString PluginDir = IPluginManager::Get().FindPlugin("UnrealRoboticsLab")->GetBaseDir();
-			FString ScriptPath = FPaths::Combine(PluginDir, TEXT("Scripts/clean_meshes.py"));
+			SlowTask.EnterProgressFrame(
+				1.f,
+				NSLOCTEXT("URLab", "ImportStep0", "Preparing meshes..."));
 
+			const FString PluginDir =
+				IPluginManager::Get().FindPlugin("UnrealRoboticsLab")->GetBaseDir();
+			const FString ScriptPath =
+				FPaths::Combine(PluginDir, TEXT("Scripts/clean_meshes.py"));
 			if (FPaths::FileExists(ScriptPath))
 			{
 				bool bCancelled = false;
-				FString PythonExe = FMjPythonHelper::EnsurePythonReady(bCancelled);
-
+				const FString PythonExe =
+					FMjPythonHelper::EnsurePythonReady(bCancelled);
 				if (bCancelled)
 				{
-					UE_LOG(LogURLabEditor, Log, TEXT("Import cancelled by user during Python setup."));
+					UE_LOG(LogURLabEditor, Log,
+						TEXT("Import cancelled by user during Python setup."));
 					return nullptr;
 				}
 
 				if (!PythonExe.IsEmpty())
 				{
-					// Run the clean script
 					int32 ReturnCode = -1;
-					FString StdOut, StdErr;
-					FString Args = FString::Printf(TEXT("\"%s\" \"%s\""), *ScriptPath, *Filename);
-					UE_LOG(LogURLabEditor, Log, TEXT("Running mesh preparation: %s %s"), *PythonExe, *Args);
-					FPlatformProcess::ExecProcess(*PythonExe, *Args, &ReturnCode, &StdOut, &StdErr);
+					FString StdOut;
+					FString StdErr;
+					const FString Args = FString::Printf(
+						TEXT("\"%s\" \"%s\""), *ScriptPath, *Filename);
+					UE_LOG(LogURLabEditor, Log,
+						TEXT("Running mesh preparation: %s %s"),
+						*PythonExe, *Args);
+					FPlatformProcess::ExecProcess(
+						*PythonExe, *Args, &ReturnCode, &StdOut, &StdErr);
 
 					if (ReturnCode == 0)
 					{
-						FString UeXmlPath = FPaths::Combine(
+						const FString UeXmlPath = FPaths::Combine(
 							FPaths::GetPath(Filename),
 							FPaths::GetBaseFilename(Filename) + TEXT("_ue.xml"));
-
 						if (FPaths::FileExists(UeXmlPath))
 						{
-							UE_LOG(LogURLabEditor, Log, TEXT("Using prepared XML: %s"), *UeXmlPath);
+							UE_LOG(LogURLabEditor, Log,
+								TEXT("Using prepared XML: %s"), *UeXmlPath);
 							ActualXmlPath = UeXmlPath;
 						}
 					}
 					else
 					{
-						UE_LOG(LogURLabEditor, Warning, TEXT("Mesh preparation script failed (code %d). Using original XML."), ReturnCode);
+						UE_LOG(LogURLabEditor, Warning,
+							TEXT("Mesh preparation script failed (code %d). "
+								 "Using original XML."),
+							ReturnCode);
 						if (!StdErr.IsEmpty())
-							UE_LOG(LogURLabEditor, Warning, TEXT("  stderr: %s"), *StdErr);
+						{
+							UE_LOG(LogURLabEditor, Warning,
+								TEXT("  stderr: %s"), *StdErr);
+						}
 					}
 				}
 				else
 				{
-					UE_LOG(LogURLabEditor, Log, TEXT("Python not configured — skipping mesh preparation."));
+					UE_LOG(LogURLabEditor, Log,
+						TEXT("Python not configured — skipping mesh preparation."));
 				}
 			}
 		}
 
 		SlowTask.EnterProgressFrame(1.f, NSLOCTEXT("URLab", "ImportStep1", "Reading XML..."));
 
-		// Set XML Path in CDO so it persists (use original path, not _ue variant)
+		// The source MJCF is imported directly. Unreal-only GLB visuals are
+		// discovered from `visual__*` frames by the XML parser; no rewritten
+		// `_ue.xml` intermediate is generated.
 		AMjArticulation* CDO = Cast<AMjArticulation>(NewBP->GeneratedClass->GetDefaultObject());
 		if (CDO)
 		{
@@ -151,7 +202,8 @@ UObject* UMujocoImportFactory::FactoryCreateFile(UClass* InClass, UObject* InPar
 
 		SlowTask.EnterProgressFrame(1.f, NSLOCTEXT("URLab", "ImportStep2", "Building Blueprint components..."));
 
-		// Generate Components using the (potentially prepared) XML
+		// Frame-convention models use the authoritative source MJCF directly.
+		// Legacy imports may still use the compatibility preprocessor above.
 		UMujocoGenerationAction* Generator = NewObject<UMujocoGenerationAction>();
 		Generator->GenerateForBlueprint(NewBP, ActualXmlPath);
 

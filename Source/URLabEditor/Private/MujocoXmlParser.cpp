@@ -387,6 +387,7 @@ void UMujocoGenerationAction::ImportNodeRecursive(const FXmlNode* Node, USCS_Nod
 	// We represent it as a UMjFrame SCS node whose children are attached to it.
 	else if (Tag.Equals(TEXT("frame")))
 	{
+		static const FString VisualFramePrefix = TEXT("visual__");
 		FString Name = Node->GetAttribute(TEXT("name"));
 		if (Name.IsEmpty())
 		{
@@ -404,6 +405,66 @@ void UMujocoGenerationAction::ImportNodeRecursive(const FXmlNode* Node, USCS_Nod
 			{
 				FrameComp->MjName = NameAttr;
 				FrameComp->OriginalMjName = NameAttr;
+			}
+		}
+
+		// URSoccerLab robot-source convention: a named, otherwise empty frame
+		// `visual__foo` carries the body-relative transform for
+		// `<xml-dir>/meshes/foo.glb`. MuJoCo accepts and dissolves the frame
+		// without ever opening the Unreal-only GLB. Keeping the render mesh as
+		// a plain UStaticMeshComponent also prevents it from being compiled
+		// back into MuJoCo as a geom.
+		if (Name.StartsWith(VisualFramePrefix, ESearchCase::CaseSensitive))
+		{
+			const FString VisualName = Name.RightChop(VisualFramePrefix.Len());
+			if (VisualName.IsEmpty() ||
+				VisualName.Contains(TEXT("/")) ||
+				VisualName.Contains(TEXT("\\")) ||
+				VisualName.Contains(TEXT("..")))
+			{
+				UE_LOG(LogURLabEditor, Error,
+					TEXT("Invalid visual frame name '%s'; expected visual__<mesh-name>."),
+					*Name);
+			}
+			else
+			{
+				const FString GlbPath = FPaths::Combine(
+					XMLDir, TEXT("meshes"), VisualName + TEXT(".glb"));
+				if (!FPaths::FileExists(GlbPath))
+				{
+					UE_LOG(LogURLabEditor, Error,
+						TEXT("Visual frame '%s' requires GLB '%s'."),
+						*Name, *GlbPath);
+				}
+				else
+				{
+					const FString MeshImportPath = AssetImportPath + TEXT("/Meshes");
+					if (UStaticMesh* VisualMesh = ImportSingleMesh(GlbPath, MeshImportPath))
+					{
+						const FString VisualNodeName =
+							FString::Printf(TEXT("Viz_%s"), *VisualName);
+						USCS_Node* MeshNode =
+							BP->SimpleConstructionScript->CreateNode(
+								UStaticMeshComponent::StaticClass(), *VisualNodeName);
+						CreatedNode->AddChildNode(MeshNode);
+
+						if (UStaticMeshComponent* MeshTemplate =
+							Cast<UStaticMeshComponent>(MeshNode->ComponentTemplate))
+						{
+							MeshTemplate->SetStaticMesh(VisualMesh);
+							MeshTemplate->SetCollisionEnabled(
+								ECollisionEnabled::NoCollision);
+							MeshTemplate->SetGenerateOverlapEvents(false);
+							MeshTemplate->SetCanEverAffectNavigation(false);
+						}
+					}
+					else
+					{
+						UE_LOG(LogURLabEditor, Error,
+							TEXT("Failed to import visual GLB '%s' for frame '%s'."),
+							*GlbPath, *Name);
+					}
+				}
 			}
 		}
 
@@ -782,39 +843,34 @@ void UMujocoGenerationAction::ImportNodeRecursive(const FXmlNode* Node, USCS_Nod
 			{
 				UE_LOG(LogURLabEditor, Log, TEXT("Applying visual properties to built-in visualizer for '%s'"), *Name);
 
-				// Create and assign material instance
-				FMuJoCoMaterialData MatData;
-				FLinearColor ResolvedRgba;
-				MatData.Rgba = ResolveGeomRgbaFromDefaults(GeomComp, BP, ResolvedRgba)
-								 ? ResolvedRgba
-								 : GeomComp->rgba;
-
-				// Key by material name (resolved through default chain) if referenced, else fall back to geom name
-				FString ResolvedMat = ResolveMaterialFromDefaults(GeomComp, BP);
-				FString MaterialKey = Name;
-				if (!ResolvedMat.IsEmpty() && MaterialData.Contains(ResolvedMat))
-				{
-					MatData = MaterialData[ResolvedMat];
-					MaterialKey = ResolvedMat;
-				}
-
-				// Create or reuse material instance
-				UMaterialInstanceConstant* MaterialInstance = CreateMaterialInstance(
-					MaterialKey,
-					MatData,
-					ImportedTextures,
-					AssetImportPath);
-
-				if (MaterialInstance)
-				{
-					BuiltInViz->SetMaterial(0, MaterialInstance);
-				}
-
-				// Check for Group 3 visibility
 				if (GeomComp->group == 3)
 				{
+					// Group 3 geoms are physics-only collision proxies. Avoid
+					// generating material assets for geometry that Unreal never renders.
 					BuiltInViz->SetVisibility(false);
 					BuiltInViz->bHiddenInGame = true;
+				}
+				else
+				{
+					FMuJoCoMaterialData MatData;
+					FLinearColor ResolvedRgba;
+					MatData.Rgba = ResolveGeomRgbaFromDefaults(GeomComp, BP, ResolvedRgba)
+									 ? ResolvedRgba
+									 : GeomComp->rgba;
+
+					FString ResolvedMat = ResolveMaterialFromDefaults(GeomComp, BP);
+					FString MaterialKey = Name;
+					if (!ResolvedMat.IsEmpty() && MaterialData.Contains(ResolvedMat))
+					{
+						MatData = MaterialData[ResolvedMat];
+						MaterialKey = ResolvedMat;
+					}
+
+					if (UMaterialInstanceConstant* MaterialInstance = CreateMaterialInstance(
+							MaterialKey, MatData, ImportedTextures, AssetImportPath))
+					{
+						BuiltInViz->SetMaterial(0, MaterialInstance);
+					}
 				}
 			}
 		}

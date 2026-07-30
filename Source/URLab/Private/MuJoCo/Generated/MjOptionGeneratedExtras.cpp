@@ -16,11 +16,6 @@
 #include "MuJoCo/Generated/MjOptionGenerated.h"
 #include <mujoco/mujoco.h>
 
-// Bit positions in mjOption.enableflags. Match mjENBL_MULTICCD / mjENBL_SLEEP
-// from mjmodel.h; hardcoded to avoid pulling mjtEnableBit into the header.
-static constexpr int MJ_ENBL_MULTICCD = 1 << 4;
-static constexpr int MJ_ENBL_SLEEP = 1 << 5;
-
 void ApplyMjOptionExtras(mjOption* Opt, const FMjOptionGenerated& Self,
 	mjSpec* Spec, mjModel* /*Model*/)
 {
@@ -32,18 +27,22 @@ void ApplyMjOptionExtras(mjOption* Opt, const FMjOptionGenerated& Self,
 		Spec->memory = static_cast<mjtSize>(Self.MemoryMB) * 1024 * 1024;
 	}
 
+	// Multi-contact CCD is a disable bit in current MuJoCo releases:
+	// enabling the feature means clearing mjDSBL_MULTICCD.  This used to
+	// write bit 4 of enableflags, which now aliases mjENBL_SLEEP and made
+	// the two otherwise unrelated options corrupt one another.
 	if (Self.bEnableMultiCCD)
-		Opt->enableflags |= MJ_ENBL_MULTICCD;
+		Opt->disableflags &= ~mjDSBL_MULTICCD;
 	else
-		Opt->enableflags &= ~MJ_ENBL_MULTICCD;
+		Opt->disableflags |= mjDSBL_MULTICCD;
 
 	if (Self.bEnableSleep)
 	{
-		Opt->enableflags |= MJ_ENBL_SLEEP;
+		Opt->enableflags |= mjENBL_SLEEP;
 		Opt->sleep_tolerance = Self.SleepTolerance;
 	}
 	else
 	{
-		Opt->enableflags &= ~MJ_ENBL_SLEEP;
+		Opt->enableflags &= ~mjENBL_SLEEP;
 	}
 }

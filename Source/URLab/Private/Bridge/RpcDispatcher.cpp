@@ -2439,10 +2439,8 @@ TSharedPtr<FJsonObject> FURLabRpcDispatcher::HandleSetSimOptions(const TSharedPt
 	Out->SetNumberField(TEXT("ccd_iterations"), m->opt.ccd_iterations);
 	Out->SetNumberField(TEXT("ccd_tolerance"), m->opt.ccd_tolerance);
 
-	constexpr int MJ_ENBL_MULTICCD = 1 << 4;
-	constexpr int MJ_ENBL_SLEEP = 1 << 5;
-	Out->SetBoolField(TEXT("enable_multiccd"), (m->opt.enableflags & MJ_ENBL_MULTICCD) != 0);
-	Out->SetBoolField(TEXT("enable_sleep"), (m->opt.enableflags & MJ_ENBL_SLEEP) != 0);
+	Out->SetBoolField(TEXT("enable_multiccd"), (m->opt.disableflags & mjDSBL_MULTICCD) == 0);
+	Out->SetBoolField(TEXT("enable_sleep"), (m->opt.enableflags & mjENBL_SLEEP) != 0);
 	Out->SetNumberField(TEXT("sleep_tolerance"), m->opt.sleep_tolerance);
 
 	// Echo the raw bit masks so callers using disableflags / enableflags
