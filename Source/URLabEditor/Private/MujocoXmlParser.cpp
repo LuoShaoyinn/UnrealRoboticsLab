@@ -439,7 +439,8 @@ void UMujocoGenerationAction::ImportNodeRecursive(const FXmlNode* Node, USCS_Nod
 				else
 				{
 					const FString MeshImportPath = AssetImportPath + TEXT("/Meshes");
-					if (UStaticMesh* VisualMesh = ImportSingleMesh(GlbPath, MeshImportPath))
+					if (UStaticMesh* VisualMesh = ImportSingleMesh(
+						GlbPath, MeshImportPath, /*bPreserveImportedMaterials=*/true))
 					{
 						const FString VisualNodeName =
 							FString::Printf(TEXT("Viz_%s"), *VisualName);
@@ -452,6 +453,12 @@ void UMujocoGenerationAction::ImportNodeRecursive(const FXmlNode* Node, USCS_Nod
 							Cast<UStaticMeshComponent>(MeshNode->ComponentTemplate))
 						{
 							MeshTemplate->SetStaticMesh(VisualMesh);
+							// Interchange's stock glTF material parents are not
+							// guaranteed to support Nanite. Simulation visuals move
+							// every frame and are small relative to environment assets,
+							// so force the conventional mesh path and preserve the GLB's
+							// authored PBR material.
+							MeshTemplate->bDisallowNanite = true;
 							MeshTemplate->SetCollisionEnabled(
 								ECollisionEnabled::NoCollision);
 							MeshTemplate->SetGenerateOverlapEvents(false);

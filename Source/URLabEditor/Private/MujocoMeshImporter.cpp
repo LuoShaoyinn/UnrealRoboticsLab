@@ -37,7 +37,10 @@
 #include "AssetRegistry/AssetRegistryModule.h"
 #include "UObject/SavePackage.h"
 
-UStaticMesh* UMujocoGenerationAction::ImportSingleMesh(const FString& SourcePath, const FString& DestinationPath)
+UStaticMesh* UMujocoGenerationAction::ImportSingleMesh(
+	const FString& SourcePath,
+	const FString& DestinationPath,
+	bool bPreserveImportedMaterials)
 {
 	if (SourcePath.IsEmpty() || DestinationPath.IsEmpty())
 	{
@@ -85,7 +88,9 @@ UStaticMesh* UMujocoGenerationAction::ImportSingleMesh(const FString& SourcePath
 
 	// Try import with MikkTSpace first (best quality)
 	// Use ActualSourcePath instead of SourcePath
-	UStaticMesh* ImportedMesh = AttemptMeshImport(ActualSourcePath, DestinationPath, EFBXNormalGenerationMethod::MikkTSpace);
+	UStaticMesh* ImportedMesh = AttemptMeshImport(
+		ActualSourcePath, DestinationPath,
+		EFBXNormalGenerationMethod::MikkTSpace, bPreserveImportedMaterials);
 
 	// Validate mesh
 	if (ImportedMesh && ValidateMesh(ImportedMesh, FileName))
@@ -104,7 +109,9 @@ UStaticMesh* UMujocoGenerationAction::ImportSingleMesh(const FString& SourcePath
 		UE_LOG(LogURLabEditor, Warning, TEXT("Failed to import mesh '%s' with MikkTSpace, attempting fallback"), *FileName);
 	}
 
-	ImportedMesh = AttemptMeshImport(ActualSourcePath, DestinationPath, EFBXNormalGenerationMethod::BuiltIn);
+	ImportedMesh = AttemptMeshImport(
+		ActualSourcePath, DestinationPath,
+		EFBXNormalGenerationMethod::BuiltIn, bPreserveImportedMaterials);
 
 	if (ImportedMesh && ValidateMesh(ImportedMesh, FileName))
 	{
@@ -116,7 +123,11 @@ UStaticMesh* UMujocoGenerationAction::ImportSingleMesh(const FString& SourcePath
 	return nullptr;
 }
 
-UStaticMesh* UMujocoGenerationAction::AttemptMeshImport(const FString& SourcePath, const FString& DestinationPath, EFBXNormalGenerationMethod::Type NormalMethod)
+UStaticMesh* UMujocoGenerationAction::AttemptMeshImport(
+	const FString& SourcePath,
+	const FString& DestinationPath,
+	EFBXNormalGenerationMethod::Type NormalMethod,
+	bool bPreserveImportedMaterials)
 {
 	IAssetTools& AssetTools = FModuleManager::LoadModuleChecked<FAssetToolsModule>("AssetTools").Get();
 
@@ -262,13 +273,16 @@ UStaticMesh* UMujocoGenerationAction::AttemptMeshImport(const FString& SourcePat
 
 	if (Mesh)
 	{
-		// Clear Interchange-created materials that may reference stripped textures.
-		// Our import pipeline assigns MI_ material instances on the SCS template,
-		// but the static mesh asset retains Interchange materials in its slots.
-		// These can crash the render thread when browsing/thumbnailing (UE-23902).
-		for (FStaticMaterial& Mat : Mesh->GetStaticMaterials())
+		// Legacy MJCF mesh geoms get URLab-generated material instances, so their
+		// Interchange slots are deliberately stripped. External visual-frame GLBs
+		// are the render source of truth and carry complete PBR materials/textures;
+		// preserve those slots so objects such as the soccer ball keep their look.
+		if (!bPreserveImportedMaterials)
 		{
-			Mat.MaterialInterface = UMaterial::GetDefaultMaterial(MD_Surface);
+			for (FStaticMaterial& Mat : Mesh->GetStaticMaterials())
+			{
+				Mat.MaterialInterface = UMaterial::GetDefaultMaterial(MD_Surface);
+			}
 		}
 
 		// Force rebuild bounds - critical for fixing 0x0x0 size issue

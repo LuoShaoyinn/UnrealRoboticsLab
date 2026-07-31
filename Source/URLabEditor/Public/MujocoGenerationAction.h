@@ -152,7 +152,7 @@ public:
 	/**
 	 * @brief Attempts to import a mesh with specified normal generation method.
 	 */
-	UStaticMesh* AttemptMeshImport(const FString& SourcePath, const FString& DestinationPath, EFBXNormalGenerationMethod::Type NormalMethod);
+	UStaticMesh* AttemptMeshImport(const FString& SourcePath, const FString& DestinationPath, EFBXNormalGenerationMethod::Type NormalMethod, bool bPreserveImportedMaterials = false);
 
 	/**
 	 * @brief Validates imported mesh has valid render data and geometry.
@@ -217,7 +217,7 @@ private:
 
 	/** Pre-scans the XML for <default><mesh scale="..."/> to populate DefaultMeshScales. */
 	void CollectDefaultMeshScales(const class FXmlNode* Node, const FString& CurrentClass = TEXT("main"), const FString& XMLDir = TEXT(""));
-	UStaticMesh* ImportSingleMesh(const FString& SourcePath, const FString& DestinationPath);
+	UStaticMesh* ImportSingleMesh(const FString& SourcePath, const FString& DestinationPath, bool bPreserveImportedMaterials = false);
 
 	UTexture2D* ImportSingleTexture(const FString& SourcePath, const FString& DestinationPath);
 
