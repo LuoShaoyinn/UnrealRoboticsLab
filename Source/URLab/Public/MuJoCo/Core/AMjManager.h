@@ -94,6 +94,12 @@ public:
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "MuJoCo")
 	UMjNetworkManager* NetworkManager;
 
+	/** Enables URLab's legacy ZMQ/SHM bridge and streaming transports.
+	 * Integrations that provide their own consolidated transport can disable
+	 * this before BeginPlay without affecting physics or render snapshots. */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Network")
+	bool bEnableNetworkTransports = true;
+
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "MuJoCo")
 	UMjInputHandler* InputHandler;
 

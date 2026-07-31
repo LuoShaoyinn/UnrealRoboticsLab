@@ -175,29 +175,30 @@ void AAMjManager::BeginPlay()
 	// subsystem's server (lifetime spans PIE sessions). Cooked builds
 	// have no resolver, fall through to creating our own and marking it
 	// as owned-by-manager so EndPlay tears it down.
-	UURLabBridgeServer* ResolvedServer = URLabBridgeProvider::ResolveEditorServer();
-	if (ResolvedServer)
+	if (bEnableNetworkTransports)
 	{
-		BridgeServer = ResolvedServer;
-		// Don't claim ownership — subsystem controls lifetime.
-	}
-	else
-	{
-		// Cooked path: no editor subsystem. Manager owns its bridge and
-		// brings up both RPC transports inline. Bridge owns all RPC
-		// transports; manager only owns publish/subscribe streams.
-		BridgeServer = NewObject<UURLabBridgeServer>(this, TEXT("BridgeServer"));
-		BridgeServer->SetOwnedByManager(true);
-		BridgeServer->Start();          // ZMQ on tcp://0.0.0.0:5559
-		BridgeServer->EnsureShmBound(); // SHM under "live"
-	}
-	BridgeServer->RegisterManager(this);
+		UURLabBridgeServer* ResolvedServer = URLabBridgeProvider::ResolveEditorServer();
+		if (ResolvedServer)
+		{
+			BridgeServer = ResolvedServer;
+			// Don't claim ownership — subsystem controls lifetime.
+		}
+		else
+		{
+			// Cooked path: no editor subsystem. Manager owns its bridge and
+			// brings up both RPC transports inline. Bridge owns all RPC
+			// transports; manager only owns publish/subscribe streams.
+			BridgeServer = NewObject<UURLabBridgeServer>(this, TEXT("BridgeServer"));
+			BridgeServer->SetOwnedByManager(true);
+			BridgeServer->Start();          // ZMQ on tcp://0.0.0.0:5559
+			BridgeServer->EnsureShmBound(); // SHM under "live"
+		}
+		BridgeServer->RegisterManager(this);
 
-	// Auto-create the streaming transports (PIE-only producers — they
-	// tap PhysicsEngine pre/post-step callbacks). Bridge-style UObject
-	// lifecycle: NewObject + SetOwningManager + TransportInit. Manager
-	// owns streaming; bridge owns RPC.
-	{
+		// Auto-create the streaming transports (PIE-only producers — they
+		// tap PhysicsEngine pre/post-step callbacks). Bridge-style UObject
+		// lifecycle: NewObject + SetOwningManager + TransportInit. Manager
+		// owns streaming; bridge owns RPC.
 		UE_LOG(LogURLab, Log, TEXT("[AAMjManager] Creating manager-owned streaming transports"));
 
 		UURLabZmqPublishTransport* Broadcaster = NewObject<UURLabZmqPublishTransport>(
@@ -239,8 +240,14 @@ void AAMjManager::BeginPlay()
 			}
 		}
 	}
+	else
+	{
+		UE_LOG(LogURLab, Log,
+			TEXT("[AAMjManager] URLab ZMQ/SHM transports disabled by integration."));
+	}
 
-	// Compile via PhysicsEngine (also discovers ZMQ components in PreCompile)
+	// Compile via PhysicsEngine. Network transport ownership is independent
+	// from the in-process physics-to-render snapshot.
 	Compile();
 	if (NetworkManager)
 		NetworkManager->UpdateCameraStreamingState();
