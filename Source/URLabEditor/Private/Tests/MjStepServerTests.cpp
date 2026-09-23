@@ -45,6 +45,7 @@
 #include "Bridge/MsgpackHelpers.h"
 #include "MuJoCo/Components/Sensors/MjCamera.h"
 #include "MuJoCo/Components/Controllers/MjPDController.h"
+#include "MuJoCo/Components/Sensors/MjCamera.h"
 #include "MuJoCo/Components/Actuators/MjActuator.h"
 #include "MuJoCo/Components/Bodies/MjBody.h"
 #include "MuJoCo/Core/MjPhysicsEngine.h"
