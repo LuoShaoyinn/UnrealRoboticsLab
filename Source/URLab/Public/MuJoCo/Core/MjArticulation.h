@@ -497,7 +497,7 @@ public:
 	 * @param spec Pointer to the shared mjSpec.
 	 * @param vfs Pointer to the shared Virtual File System.
 	 */
-	void Setup(mjSpec* Spec, mjVFS* VFS);
+	virtual void Setup(mjSpec* Spec, mjVFS* VFS);
 
 	/**
 	 * @brief Finalizes setup after compilation, resolving indices and bindings.
