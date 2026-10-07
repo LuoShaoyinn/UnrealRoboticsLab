@@ -28,7 +28,9 @@
 #include "Misc/FileHelper.h"
 #include "Misc/Paths.h"
 #include "Algo/BinarySearch.h"
+#if WITH_EDITOR
 #include "DesktopPlatformModule.h"
+#endif
 #include "Framework/Application/SlateApplication.h"
 
 const FString AMjReplayManager::LiveSessionName = TEXT("Live Recording");
@@ -679,6 +681,7 @@ bool AMjReplayManager::LoadFromCSV(FString FilePath, float Timestep)
 
 bool AMjReplayManager::BrowseAndLoadCSV(float Timestep)
 {
+#if WITH_EDITOR
 	IDesktopPlatform* DesktopPlatform = FDesktopPlatformModule::Get();
 	if (!DesktopPlatform)
 		return false;
@@ -741,10 +744,14 @@ bool AMjReplayManager::BrowseAndLoadCSV(float Timestep)
 		return LoadFromCSV(OutFiles[0], Timestep);
 	}
 	return false;
+#else
+	return false;
+#endif
 }
 
 bool AMjReplayManager::BrowseAndSaveRecording()
 {
+#if WITH_EDITOR
 	TArray<FMjReplayFrame>& Frames = GetActiveFrames();
 	if (Frames.Num() == 0)
 	{
@@ -871,6 +878,9 @@ bool AMjReplayManager::BrowseAndSaveRecording()
 		UE_LOG(LogURLabReplay, Log, TEXT("ReplayManager: Saved %d frames as JSON to '%s'"), Frames.Num(), *SavePath);
 		return bSaved;
 	}
+#else
+	return false;
+#endif
 }
 
 // --- Physics Thread Callbacks ---

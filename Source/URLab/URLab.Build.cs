@@ -81,7 +81,8 @@ public class URLab : ModuleRules
 			PrivateDependencyModuleNames.AddRange(new string[]
 			{
 				"UnrealEd",
-				"AssetTools"
+				"AssetTools",
+				"DesktopPlatform"
 			});
 		}
 
@@ -93,7 +94,6 @@ public class URLab : ModuleRules
 			"Chaos",
 			"Landscape",
 			"Eigen",
-			"DesktopPlatform",
 			// rpclib: msgpack-cxx headers (clmdep_msgpack namespace) +
 			// pre-built static rpc.lib. Used by MjMsgpackHelpers for
 			// the step server's binary wire format. JSON fallback is
